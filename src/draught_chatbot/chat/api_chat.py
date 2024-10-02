@@ -1,9 +1,10 @@
-# api_chat.py
 
+import json
+from ..config.model_config import APIKEY_CONFIG_PATH
 #### zhipu
 from zhipuai import ZhipuAI
 from ..config.model_config import ZHIPU_API_KEY
-zhipu_client = ZhipuAI(api_key=ZHIPU_API_KEY)    
+# zhipu_client = ZhipuAI(api_key=ZHIPU_API_KEY)    
 
 #### qianfan 
 import os
@@ -17,16 +18,22 @@ import qianfan
 # 方式二：【不推荐】使用应用AK/SK鉴权
 # 替换下列示例中参数，将应用API_Key、应用Secret key值替换为真实值
 # 已经在model-config填写了环境变量，直接使用即可
-qianfan_client = qianfan.ChatCompletion()
+# qianfan_client = qianfan.ChatCompletion()
 
 #### doubao
 from volcenginesdkarkruntime import Ark
-from ..config.model_config import DOUBAO_MODEL_DICT
-doubao_client = Ark(api_key=os.environ.get("ARK_API_KEY"))
+# from ..config.model_config import DOUBAO_MODEL_DICT
+# doubao_client = Ark(api_key=os.environ.get("ARK_API_KEY"))
 
 # adapter
-def api_chat(type, model, temperature, messages, stream):
+def api_chat(type, model, temperature, messages, stream, user_name):
+    
+    with open(APIKEY_CONFIG_PATH, "r") as fp:
+        apikeys_config = json.load(fp)
+        apikeys_config = apikeys_config.get(user_name, {})
+        
     if type == "zhipu":
+        zhipu_client = ZhipuAI(api_key=apikeys_config[f"ZHIPU_APIKEY"])
         resp = zhipu_client.chat.completions.create(model=model,temperature=temperature,messages=messages,stream=stream)
         if stream:
             for chunk in resp:
@@ -34,14 +41,18 @@ def api_chat(type, model, temperature, messages, stream):
         else:
             return resp.choices[0].content
     elif type == "doubao":
-        resp = doubao_client.chat.completions.create(model=DOUBAO_MODEL_DICT[model],temperature=temperature,messages=messages,stream=stream)
+        doubao_client = Ark(api_key=apikeys_config[f"ARK_APIKEY"])
+        resp = doubao_client.chat.completions.create(model=apikeys_config[f"doubao.{model}"],temperature=temperature,messages=messages,stream=stream)
         if stream:
             for chunk in resp:
                 yield chunk.choices[0].delta.content
         else:
             return resp.choices[0].content
     elif type == "qianfan":
-        # TODO 长度问题会有报错
+        os.environ["QIANFAN_AK"] = apikeys_config.get(f"QIANFAN_AK", "")
+        os.environ["QIANFAN_SK"] = apikeys_config.get(f"QIANFAN_SK", "")
+        qianfan_client = qianfan.ChatCompletion()
+        
         # qianfan messages 必须奇数长度  但是选历史的时候很难处理啊。 
         # 还是用长度割吧方便 而且不要原地修改
         # qianfan 不支持 system， 所以把system 拼接到 messages[1]（user）

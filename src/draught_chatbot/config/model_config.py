@@ -11,15 +11,4 @@ SUPPORT_MODEL_DICT = {
 
 # api key 
 
-## zhipu
-ZHIPU_API_KEY = ""
-
-## qianfan
-os.environ["QIANFAN_AK"] = ""
-os.environ["QIANFAN_SK"] = ""
-
-## doubao
-os.environ["ARK_API_KEY"] = "" 
-DOUBAO_MODEL_DICT = {
-    "Doubao-pro-32k":  "",
-}
+APIKEY_CONFIG_PATH = "./draught_chatbot/config/apikey_config.json"

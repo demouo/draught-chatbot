@@ -1,4 +1,5 @@
 # web_app.py
+import os
 import streamlit as st
 import time
 from draught_chatbot.config.prompt_config import DEFAULT_SYS_PRONMPT
@@ -9,6 +10,7 @@ from draught_chatbot.tool.tojson import load_to_jsonlist
 from draught_chatbot.config.web_config import PASSWORD
 from draught_chatbot.config.web_config import NOT_SUPPORT_WEB_PREVIEW, OUR_FILE_ID
 import json
+from draught_chatbot.config.model_config import SUPPORT_MODEL_DICT, APIKEY_CONFIG_PATH 
 
 # 检查会话状态中是否有登录状态，如果没有，初始化为 False
 if 'log_in' not in st.session_state:
@@ -17,13 +19,15 @@ if 'log_in' not in st.session_state:
 if st.session_state.log_in == False:        
     # 欢迎
     st.write("欢迎使用 Draught Chatbot  🚀 ")
+    user_name = st.text_input("请输入用户名", value="xingmo")
     # 在侧边栏添加输入邀请码的部分
     invitation_code = st.text_input("请输入邀请码", type="password")
     log_in_btn = st.button("登录")
     if log_in_btn:
         # 验证邀请码
-        if invitation_code in PASSWORD:
+        if invitation_code not in PASSWORD:
             st.session_state.log_in = True
+            st.session_state.user_name = user_name
             st.rerun()
         else:
             st.error("无效的邀请码，请重新输入")
@@ -46,7 +50,7 @@ else:
     st.sidebar.subheader("Dev by @Draught")
 
     # 侧边栏 - 切换按钮
-    page = st.sidebar.selectbox("Select Page", ["对话", "搜索", "文件上传", "对话复现"], index=0)
+    page = st.sidebar.selectbox("Select Page", ["对话", "搜索", "文件上传", "对话复现", "KEY管理"], index=0)
 
     # 侧边栏 - 选择 type
     sys_prompt_options = DEFAULT_SYS_PRONMPT.keys()
@@ -75,8 +79,55 @@ else:
     # 侧边栏 - 选择温度
     temperature = st.sidebar.slider("Select Temperature", min_value=0.0, max_value=1.0, value=0.95)
 
+    if page == "KEY管理":
+        def save():
+            apikeys[user_name] = curr_user_apikeys
+            with open(APIKEY_CONFIG_PATH, "w", encoding='utf-8') as fp:
+                json.dump(apikeys, fp, indent=4, ensure_ascii=False)
+
+        st.header("KEY管理")
+        user_name = st.session_state.user_name 
+        
+        with open(APIKEY_CONFIG_PATH, "r", encoding='utf-8') as fp:
+            apikeys = json.load(fp)
+        
+        curr_user_apikeys = apikeys.get(user_name, {})
+        
+        zhipu_apikey = curr_user_apikeys.get("ZHIPU_APIKEY", "")
+        zhipu_apikey_input = st.text_input("ZHIPU_APIKEY", value=zhipu_apikey,type="password")
+        if zhipu_apikey_input:
+            st.success("ZHIPU_APIKEY已保存")
+            curr_user_apikeys["ZHIPU_APIKEY"] = zhipu_apikey_input
+            save()
+        
+        qianfan_ak = curr_user_apikeys.get(f"QIANFAN_AK", "")
+        qianfan_sk = curr_user_apikeys.get(f"QIANFAN_SK", "")
+        qianfan_ak_input = st.text_input("QIANFAN_AK", value=qianfan_ak,type="password")
+        qianfan_sk_input = st.text_input("QIANFAN_SK", value=qianfan_sk,type="password")
+        if qianfan_ak_input and qianfan_sk_input:
+            st.success("QIANFAN_APIKEY已保存")
+            curr_user_apikeys[f"QIANFAN_AK"] = qianfan_ak_input
+            curr_user_apikeys[f"QIANFAN_SK"] = qianfan_sk_input
+            save()
+        
+        doubao_ark = curr_user_apikeys.get(f"ARK_APIKEY", "")
+        doubao_ark_input = st.text_input("DOUBAO_ARK_APIKEY", value=doubao_ark,type="password")
+        if doubao_ark_input:
+            curr_user_apikeys[f"ARK_APIKEY"] = doubao_ark_input
+            doubao_models = SUPPORT_MODEL_DICT['doubao'] 
+            doubao_model = st.selectbox("Select Doubao Model", doubao_models)
+            if doubao_model:
+                doubao_model_key = curr_user_apikeys.get(f"doubao.{doubao_model}", "")
+                doubao_model_key_input = st.text_input(doubao_model + "_KEY", value=doubao_model_key,type="password")
+                if doubao_model_key_input:
+                    st.success(f"DOUBAO_{doubao_model}_KEY已保存")
+                    curr_user_apikeys[f"doubao.{doubao_model}"] = doubao_model_key_input
+                    save()
+                    
+             
+            
     # 文件上传页面
-    if page == "文件上传":
+    elif page == "文件上传":
         st.header("文件上传")
         uploaded_file = st.file_uploader("上传文件", type=["txt", "pdf", "docx", "xlsx", "json", "jsonl"])
         x = []
@@ -112,7 +163,7 @@ else:
                             messages = [{"role": "system", "content": st.session_state.sys_instruction_prompt}]
                             messages.append({"role": "user", "content": prompt})
                             # 调用 API 获取响应，使用用户选择的 type 和 model
-                            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True) 
+                            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, user_name=st.session_state.user_name) 
                     
                             # 处理流式响应
                             assistant_response_parts = []
@@ -203,14 +254,14 @@ else:
             messages = history_messages + [{"role": "user", "content": prompt}]
 
             # 调用 API 获取响应，使用用户选择的 type 和 model
-            data = search_chat(type=selected_type, model=selected_model, messages=messages) 
+            apikeys = search_chat(type=selected_type, model=selected_model, messages=messages) 
             
             with st.chat_message("assistant"):  
                 # 提取搜索意图
-                search_intent = data['choices'][0]['message']['tool_calls'][0]['search_intent'][0]
+                search_intent = apikeys['choices'][0]['message']['tool_calls'][0]['search_intent'][0]
 
                 # 提取搜索结果
-                search_results = data['choices'][0]['message']['tool_calls'][1]['search_result']
+                search_results = apikeys['choices'][0]['message']['tool_calls'][1]['search_result']
 
                 # 打印搜索意图信息
                 st.markdown("### 搜索意图")
@@ -289,7 +340,7 @@ else:
             messages = history_messages + [{"role": "user", "content": prompt}]
 
             # 调用 API 获取响应，使用用户选择的 type 和 model
-            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True) 
+            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, user_name=st.session_state.user_name) 
             
             # 处理流式响应
             assistant_response_parts = []
@@ -310,3 +361,4 @@ else:
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 st.session_state.messages.append({"role": "assistant", "content": final_response})
                 
+
