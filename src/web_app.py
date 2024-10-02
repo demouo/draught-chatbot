@@ -19,13 +19,13 @@ if 'log_in' not in st.session_state:
 if st.session_state.log_in == False:        
     # 欢迎
     st.write("欢迎使用 Draught Chatbot  🚀 ")
-    user_name = st.text_input("请输入用户名", value="xingmo")
+    user_name = st.text_input("请输入用户名", value="default")
     # 在侧边栏添加输入邀请码的部分
     invitation_code = st.text_input("请输入邀请码", type="password")
     log_in_btn = st.button("登录")
     if log_in_btn:
         # 验证邀请码
-        if invitation_code not in PASSWORD:
+        if invitation_code in PASSWORD:
             st.session_state.log_in = True
             st.session_state.user_name = user_name
             st.rerun()
