@@ -12,5 +12,6 @@ llm-chatbot based on streamlit and LLM APIs
 ## Start
 
 ```zsh
+cd src
 streamlit run web_app.py
 ```
