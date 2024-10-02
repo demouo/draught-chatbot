@@ -2,9 +2,8 @@ import json
 import requests
 import uuid
 
-from ..config.model_config import ZHIPU_API_KEY
 
-api_key = ZHIPU_API_KEY
+api_key = "ZHIPU_API_KEY"
 
 def search_chat(type, model, messages):
     msg = messages

@@ -3,7 +3,6 @@ import json
 from ..config.model_config import APIKEY_CONFIG_PATH
 #### zhipu
 from zhipuai import ZhipuAI
-from ..config.model_config import ZHIPU_API_KEY
 # zhipu_client = ZhipuAI(api_key=ZHIPU_API_KEY)    
 
 #### qianfan 
@@ -25,34 +24,43 @@ from volcenginesdkarkruntime import Ark
 # from ..config.model_config import DOUBAO_MODEL_DICT
 # doubao_client = Ark(api_key=os.environ.get("ARK_API_KEY"))
 
+class ClientFactory:
+    _client_map = {}
+    @classmethod
+    def get_client(cls, type, apikey_config={}):
+        client = cls._client_map.get(type, None)
+        # 未初始化
+        if not client:
+            if type == "zhipu":
+                client = ZhipuAI(api_key=apikey_config.get(f"ZHIPU_APIKEY", ""))
+            elif type == "doubao":
+                client = Ark(api_key=apikey_config.get("ARK_APIKEY", ""))
+            elif type == "qianfan":
+                os.environ["QIANFAN_AK"] = apikey_config.get(f"QIANFAN_AK", "")
+                os.environ["QIANFAN_SK"] = apikey_config.get(f"QIANFAN_SK", "")
+                client = qianfan.ChatCompletion()
+            cls._client_map[type] = client
+        return client
+            
 # adapter
-def api_chat(type, model, temperature, messages, stream, user_name):
+def api_chat(type, model, temperature, messages, stream, apikey_config):
+    client = ClientFactory.get_client(type, apikey_config)
     
-    with open(APIKEY_CONFIG_PATH, "r") as fp:
-        apikeys_config = json.load(fp)
-        apikeys_config = apikeys_config.get(user_name, {})
-        
     if type == "zhipu":
-        zhipu_client = ZhipuAI(api_key=apikeys_config[f"ZHIPU_APIKEY"])
-        resp = zhipu_client.chat.completions.create(model=model,temperature=temperature,messages=messages,stream=stream)
+        resp = client.chat.completions.create(model=model,temperature=temperature,messages=messages,stream=stream)
         if stream:
             for chunk in resp:
                 yield chunk.choices[0].delta.content
         else:
             return resp.choices[0].content
     elif type == "doubao":
-        doubao_client = Ark(api_key=apikeys_config[f"ARK_APIKEY"])
-        resp = doubao_client.chat.completions.create(model=apikeys_config[f"doubao.{model}"],temperature=temperature,messages=messages,stream=stream)
+        resp = client.chat.completions.create(model=apikey_config[f"doubao.{model}"],temperature=temperature,messages=messages,stream=stream)
         if stream:
             for chunk in resp:
                 yield chunk.choices[0].delta.content
         else:
             return resp.choices[0].content
     elif type == "qianfan":
-        os.environ["QIANFAN_AK"] = apikeys_config.get(f"QIANFAN_AK", "")
-        os.environ["QIANFAN_SK"] = apikeys_config.get(f"QIANFAN_SK", "")
-        qianfan_client = qianfan.ChatCompletion()
-        
         # qianfan messages 必须奇数长度  但是选历史的时候很难处理啊。 
         # 还是用长度割吧方便 而且不要原地修改
         # qianfan 不支持 system， 所以把system 拼接到 messages[1]（user）
@@ -64,7 +72,7 @@ def api_chat(type, model, temperature, messages, stream, user_name):
         messages_copy[1]["content"] = sys_msg + "\n" + messages_copy[1]["content"]
         messages_copy = messages_copy[1:]
          
-        resp = qianfan_client.do(model=model, messages=messages_copy, stream=stream, temperature=temperature)
+        resp = client.do(model=model, messages=messages_copy, stream=stream, temperature=temperature)
         if stream:
             for chunk in resp:
                 yield chunk["body"]["result"]

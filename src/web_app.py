@@ -79,19 +79,28 @@ else:
     # 侧边栏 - 选择温度
     temperature = st.sidebar.slider("Select Temperature", min_value=0.0, max_value=1.0, value=0.95)
 
+    # 全局 - 用户配置
+    if "apikey_config" not in st.session_state:
+        user_name = st.session_state.user_name 
+        with open(APIKEY_CONFIG_PATH, "r", encoding='utf-8') as fp:
+            apikeys = json.load(fp)
+        curr_user_apikeys = apikeys.get(user_name, {})
+        st.session_state.apikey_config = curr_user_apikeys
+
     if page == "KEY管理":
         def save():
-            apikeys[user_name] = curr_user_apikeys
+            st.session_state.apikey_config = curr_user_apikeys
+            apikeys[st.session_state.user_name] = curr_user_apikeys
             with open(APIKEY_CONFIG_PATH, "w", encoding='utf-8') as fp:
                 json.dump(apikeys, fp, indent=4, ensure_ascii=False)
 
         st.header("KEY管理")
-        user_name = st.session_state.user_name 
         
         with open(APIKEY_CONFIG_PATH, "r", encoding='utf-8') as fp:
             apikeys = json.load(fp)
-        
-        curr_user_apikeys = apikeys.get(user_name, {})
+            
+        curr_user_apikeys = apikeys.get(st.session_state.user_name, {})
+        st.session_state.apikey_config = curr_user_apikeys
         
         zhipu_apikey = curr_user_apikeys.get("ZHIPU_APIKEY", "")
         zhipu_apikey_input = st.text_input("ZHIPU_APIKEY", value=zhipu_apikey,type="password")
@@ -124,10 +133,10 @@ else:
                     curr_user_apikeys[f"doubao.{doubao_model}"] = doubao_model_key_input
                     save()
                     
-             
-            
     # 文件上传页面
     elif page == "文件上传":
+        if not st.session_state.apikey_config:
+            st.warning("检测到未配置APIKEY，请先到\"Page - KEY管理\"配置APIKEY")
         st.header("文件上传")
         uploaded_file = st.file_uploader("上传文件", type=["txt", "pdf", "docx", "xlsx", "json", "jsonl"])
         x = []
@@ -163,7 +172,7 @@ else:
                             messages = [{"role": "system", "content": st.session_state.sys_instruction_prompt}]
                             messages.append({"role": "user", "content": prompt})
                             # 调用 API 获取响应，使用用户选择的 type 和 model
-                            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, user_name=st.session_state.user_name) 
+                            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, apikey_config=st.session_state.apikey_config) 
                     
                             # 处理流式响应
                             assistant_response_parts = []
@@ -214,6 +223,8 @@ else:
                     st.write("\n")
                 st.markdown("`[END]` All Chats are Done!")
     elif page == "搜索":
+        if not st.session_state.apikey_config:
+            st.warning("检测到未配置APIKEY，请先到\"Page - KEY管理\"配置APIKEY")
         st.header("搜索")
         # 初始化聊天历史
         if "messages" not in st.session_state:
@@ -297,6 +308,8 @@ else:
                             st.warning("暂不支持预览")
                     st.markdown(f"**内容**：{result.get('content', '')}\n")
     else:
+        if not st.session_state.apikey_config:
+            st.warning("检测到未配置APIKEY，请先到\"Page - KEY管理\"配置APIKEY")
         # 对话
         # 初始化聊天历史
         if "messages" not in st.session_state:
@@ -340,7 +353,7 @@ else:
             messages = history_messages + [{"role": "user", "content": prompt}]
 
             # 调用 API 获取响应，使用用户选择的 type 和 model
-            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, user_name=st.session_state.user_name) 
+            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, apikey_config=st.session_state.apikey_config) 
             
             # 处理流式响应
             assistant_response_parts = []
