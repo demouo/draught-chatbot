@@ -1,5 +1,6 @@
 # web_app.py
 import os
+import sqlite3
 import streamlit as st
 import time
 from draught_chatbot.config.prompt_config import DEFAULT_SYS_PRONMPT
@@ -9,15 +10,17 @@ from draught_chatbot.config.model_config import SUPPORT_MODEL_DICT
 from draught_chatbot.tool.tojson import load_to_jsonlist
 from draught_chatbot.config.web_config import PASSWORD
 from draught_chatbot.config.web_config import NOT_SUPPORT_WEB_PREVIEW, OUR_FILE_ID
+from draught_chatbot.db import add_history, clear_history, get_history, init_db
 import json
 from draught_chatbot.config.model_config import SUPPORT_MODEL_DICT, APIKEY_CONFIG_PATH 
+from datetime import datetime
 
 # 检查会话状态中是否有登录状态，如果没有，初始化为 False
 if 'log_in' not in st.session_state:
     st.session_state.log_in = False
 
+# 要求登录
 if st.session_state.log_in == False:        
-    # 欢迎
     st.write("欢迎使用 Draught Chatbot  🚀 ")
     user_name = st.text_input("请输入用户名", value="default")
     # 在侧边栏添加输入邀请码的部分
@@ -31,6 +34,7 @@ if st.session_state.log_in == False:
             st.rerun()
         else:
             st.error("无效的邀请码，请重新输入")
+# 登录成功
 else:
     # Streamlit页面配置
     st.set_page_config(page_title="Draught Chatbot", page_icon="🤖")
@@ -41,6 +45,10 @@ else:
     # 初始化系统提示
     if "sys_instruction_prompt" not in st.session_state:
         st.session_state.sys_instruction_prompt = ""
+
+    # 初始化聊天ID
+    if "chat_id" not in st.session_state:
+        st.session_state.chat_id = None
 
     # 侧边栏 - 图片
     logo_path = '../assets/logo_sheep.png'
@@ -87,7 +95,116 @@ else:
         curr_user_apikeys = apikeys.get(user_name, {})
         st.session_state.apikey_config = curr_user_apikeys
 
-    if page == "KEY管理":
+    # 几个分页
+    if page == "对话":
+        # 选择对话历史
+        user_name = st.session_state.user_name 
+        # 侧边栏 - 历史录
+        st.sidebar.subheader("Chat History")
+        history = get_history(user_name)
+        history.sort(key=lambda x: x[2], reverse=True)
+        history_options = [f"{summary}  {start_time}" for hist_id, summary, start_time in history]
+        # 一开始啥也不选，index=None： 新进来就是新聊天,聊天会产生chat_id,然后选中最后一个聊天（本次聊天）即可,因为上面做了按时间从近到远排序所以是第一个
+        selected_history = st.sidebar.selectbox("Select Chat History", history_options, index=None if not st.session_state.chat_id else 0)
+
+        if selected_history:
+            hist_id = next((hist_id for hist_id, summary, start_time in history if f"{summary}  {start_time}" == selected_history), None)
+            if hist_id:
+                # 加载历史对话
+                conn = sqlite3.connect('chat_history.db')
+                c = conn.cursor()
+                c.execute('SELECT messages FROM history WHERE id = ?', (hist_id,))
+                messages = json.loads(c.fetchone()[0])
+                st.session_state.messages = messages
+                st.session_state.chat_id = hist_id
+                conn.close()
+        else:
+            st.session_state.messages = [{"role": "system", "content": st.session_state.sys_instruction_prompt}]
+            st.session_state.chat_id = None
+            
+        # 侧边栏 - 新增对话按钮
+        if st.sidebar.button("New Chat"):
+            st.session_state.messages = [{"role": "system", "content": st.session_state.sys_instruction_prompt}]
+            st.session_state.chat_id = None
+
+        # # 侧边栏 - 清除历史记录按钮
+        # if st.sidebar.button("Clear History"):
+        #     clear_history(user_name)
+        #     st.session_state.messages = [{"role": "system", "content": st.session_state.sys_instruction_prompt}]
+        #     st.session_state.chat_id = None
+        #     st.sidebar.info("Cleared all history.")
+        if not st.session_state.apikey_config:
+            st.warning("检测到未配置APIKEY，请先到\"Page - KEY管理\"配置APIKEY")
+
+        # 初始化聊天历史
+        if "messages" not in st.session_state:
+            st.session_state.messages = [{"role": "system", "content": st.session_state.sys_instruction_prompt}]
+        else:
+            # 更新系统指令
+            st.session_state.messages[0] = {"role": "system", "content": st.session_state.sys_instruction_prompt}
+
+        # 用户选择历史消息的数量
+        history_length = st.sidebar.slider("Select Number of History", min_value=0, max_value=10, value=3)
+
+        # 显示聊天历史 (从第二个元素开始，因为第一个元素是系统指令)
+        chat_container = st.container()  # 创建一个容器用于显示聊天历史
+        for message in st.session_state.messages[1:]:
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
+
+        # ! 用户输入
+        if prompt := st.chat_input("欢迎向我提问🙋"):
+            # 显示用户消息
+            with st.chat_message("user"):
+                st.write(prompt)
+
+            # 添加中断按钮
+            stop_button = st.button('stop', key='stop_button')
+
+            # 根据用户选择的历史长度来截取历史消息
+            history_messages = []
+            if history_length > 0: 
+                history_messages += st.session_state.messages[-history_length:]
+                if len(history_messages) == 0 or history_messages[0]["role"] != "system":
+                    history_messages = [st.session_state.messages[0]] + history_messages
+            messages = history_messages + [{"role": "user", "content": prompt}]
+
+            # 调用 API 获取响应，使用用户选择的 type 和 model
+            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, apikey_config=st.session_state.apikey_config) 
+
+            # 处理流式响应
+            assistant_response_parts = []
+            with st.chat_message("assistant"):  
+                container = st.empty()
+                for chunk in response:
+                    new_text = chunk
+                    assistant_response_parts.append(new_text)
+                    container.markdown("".join(assistant_response_parts), unsafe_allow_html=True)
+                    if stop_button:  # 检查是否点击了中断按钮
+                        break
+                    time.sleep(0.05)
+
+                # 显示完整的响应
+                container.markdown("".join(assistant_response_parts) + "\n\n`<END>`", unsafe_allow_html=True)
+                # 对话历史
+                final_response = "".join(assistant_response_parts).strip()
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                st.session_state.messages.append({"role": "assistant", "content": final_response})
+
+                # 添加历史记录到数据库
+                summary = prompt[:30] + "..."  # 使用用户提问的前30个字符作为摘要
+                start_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+                if st.session_state.chat_id is None:
+                    st.session_state.chat_id = add_history(user_name, summary, start_time, st.session_state.messages)
+                else:
+                    # 更新现有聊天记录
+                    conn = sqlite3.connect('chat_history.db')
+                    c = conn.cursor()
+                    c.execute('UPDATE history SET messages = ? WHERE id = ?', (json.dumps(st.session_state.messages), st.session_state.chat_id))
+                    conn.commit()
+                    conn.close()
+
+    elif page == "KEY管理":
         def save():
             st.session_state.apikey_config = curr_user_apikeys
             apikeys[st.session_state.user_name] = curr_user_apikeys
@@ -132,8 +249,6 @@ else:
                     st.success(f"DOUBAO_{doubao_model}_KEY已保存")
                     curr_user_apikeys[f"doubao.{doubao_model}"] = doubao_model_key_input
                     save()
-                    
-    # 文件上传页面
     elif page == "文件上传":
         if not st.session_state.apikey_config:
             st.warning("检测到未配置APIKEY，请先到\"Page - KEY管理\"配置APIKEY")
@@ -307,71 +422,3 @@ else:
                         else:
                             st.warning("暂不支持预览")
                     st.markdown(f"**内容**：{result.get('content', '')}\n")
-    else:
-        if not st.session_state.apikey_config:
-            st.warning("检测到未配置APIKEY，请先到\"Page - KEY管理\"配置APIKEY")
-        # 对话
-        # 初始化聊天历史
-        if "messages" not in st.session_state:
-            st.session_state.messages = [{"role": "system", "content": st.session_state.sys_instruction_prompt}]
-        else:
-            # 更新系统指令
-            st.session_state.messages[0] = {"role": "system", "content": st.session_state.sys_instruction_prompt}
-
-        # 用户选择历史消息的数量
-        history_length = st.sidebar.slider("Select Number of History", min_value=0, max_value=10, value=3)
-
-        # 添加清除历史按钮
-        clear_history_button = st.sidebar.button("Clear Chats", type="primary")
-
-        # 当用户点击清除历史按钮时，显示确认弹框
-        if clear_history_button:
-            st.sidebar.info("Cleared all history.")
-            st.session_state.messages = [{"role": "system", "content": st.session_state.sys_instruction_prompt}]
-
-        # 显示聊天历史 (从第二个元素开始，因为第一个元素是系统指令)
-        chat_container = st.container()  # 创建一个容器用于显示聊天历史
-        for message in st.session_state.messages[1:]:
-            with st.chat_message(message["role"]):
-                st.write(message["content"])
-
-        # 用户输入
-        if prompt := st.chat_input("欢迎向我提问🙋"):
-            # 显示用户消息
-            with st.chat_message("user"):
-                st.write(prompt)
-            
-            # 添加中断按钮
-            stop_button = st.button('stop', key='stop_button')
-
-            # 根据用户选择的历史长度来截取历史消息
-            history_messages = []
-            if history_length > 0: 
-                history_messages += st.session_state.messages[-history_length:]
-                if len(history_messages) == 0 or history_messages[0]["role"] != "system":
-                    history_messages = [st.session_state.messages[0]] + history_messages
-            messages = history_messages + [{"role": "user", "content": prompt}]
-
-            # 调用 API 获取响应，使用用户选择的 type 和 model
-            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, apikey_config=st.session_state.apikey_config) 
-            
-            # 处理流式响应
-            assistant_response_parts = []
-            with st.chat_message("assistant"):  
-                container = st.empty()
-                for chunk in response:
-                    new_text = chunk
-                    assistant_response_parts.append(new_text)
-                    container.markdown("".join(assistant_response_parts), unsafe_allow_html=True)
-                    if stop_button:  # 检查是否点击了中断按钮
-                        break
-                    time.sleep(0.05)
-                
-                # 显示完整的响应
-                container.markdown("".join(assistant_response_parts), unsafe_allow_html=True)
-                # 对话历史
-                final_response = "".join(assistant_response_parts).strip()
-                st.session_state.messages.append({"role": "user", "content": prompt})
-                st.session_state.messages.append({"role": "assistant", "content": final_response})
-                
-
