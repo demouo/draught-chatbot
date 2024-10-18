@@ -10,5 +10,4 @@ SUPPORT_MODEL_DICT = {
 }
 
 # api key 
-
 APIKEY_CONFIG_PATH = "./draught_chatbot/config/apikey_config.json"
