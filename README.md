@@ -9,7 +9,7 @@ llm-chatbot based on streamlit and LLM APIs
 - volcengine-python-sdk[ark]
 
 ```zsh
-pip install streamlit zhipuai qianfan 'volcengine-python-sdk[ark]' 
+pip install streamlit zhipuai qianfan 'volcengine-python-sdk[ark]' streamlit_authenticator 
 ```
 
 ## Configuration

@@ -1,5 +1,7 @@
 
 import json
+
+from openai import OpenAI
 from ..config.model_config import APIKEY_CONFIG_PATH
 #### zhipu
 from zhipuai import ZhipuAI
@@ -39,27 +41,53 @@ class ClientFactory:
                 os.environ["QIANFAN_AK"] = apikey_config.get(f"QIANFAN_AK", "")
                 os.environ["QIANFAN_SK"] = apikey_config.get(f"QIANFAN_SK", "")
                 client = qianfan.ChatCompletion()
+            elif type == 'aliyun':
+                openai_api_base = "http://10.10.105.149:8000/v1"
+                client = OpenAI(
+                    api_key="EMPTY",
+                    base_url=openai_api_base,
+                )
             cls._client_map[type] = client
         return client
-            
+
+def api_chat(type, model, temperature, messages, apikey_config):
+    client = ClientFactory.get_client(type, apikey_config)
+    if type in ["zhipu", "aliyun"]:
+        resp = client.chat.completions.create(model=model,temperature=temperature,messages=messages)
+        return resp.choices[0].message.content
+    elif type == "doubao":
+        resp = client.chat.completions.create(model=apikey_config[f"doubao.{model}"],temperature=temperature,messages=messages)
+        return resp.choices[0].message.content
+    elif type == "qianfan":
+        # qianfan messages 必须奇数长度  但是选历史的时候很难处理啊。 
+        # 还是用长度割吧方便 而且不要原地修改
+        # qianfan 不支持 system， 所以把system 拼接到 messages[1]（user）
+        messages_copy = messages.copy()
+        
+        if len(messages_copy) & 1:
+            messages_copy.pop(1)
+        sys_msg = messages_copy[0]["content"]
+        messages_copy[1]["content"] = sys_msg + "\n" + messages_copy[1]["content"]
+        messages_copy = messages_copy[1:]
+         
+        resp = client.do(model=model, messages=messages_copy, temperature=temperature)
+        return resp["body"]["result"]
+    else:
+        raise ValueError(f"不支持的模型类型: {type}")
 # adapter
-def api_chat(type, model, temperature, messages, stream, apikey_config):
+def stream_api_chat(type, model, temperature, messages, stream, apikey_config):
     client = ClientFactory.get_client(type, apikey_config)
     
-    if type == "zhipu":
+    if type in ["zhipu", "aliyun"]:
         resp = client.chat.completions.create(model=model,temperature=temperature,messages=messages,stream=stream)
         if stream:
             for chunk in resp:
                 yield chunk.choices[0].delta.content
-        else:
-            return resp.choices[0].content
     elif type == "doubao":
         resp = client.chat.completions.create(model=apikey_config[f"doubao.{model}"],temperature=temperature,messages=messages,stream=stream)
         if stream:
             for chunk in resp:
                 yield chunk.choices[0].delta.content
-        else:
-            return resp.choices[0].content
     elif type == "qianfan":
         # qianfan messages 必须奇数长度  但是选历史的时候很难处理啊。 
         # 还是用长度割吧方便 而且不要原地修改

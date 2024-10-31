@@ -5,7 +5,7 @@ import sqlite3
 import streamlit as st
 import time
 from draught_chatbot.config.prompt_config import DEFAULT_SYS_PRONMPT
-from draught_chatbot.chat.api_chat import api_chat
+from draught_chatbot.chat.api_chat import stream_api_chat
 from draught_chatbot.chat.search_chat import search_chat
 from draught_chatbot.config.model_config import SUPPORT_MODEL_DICT
 from draught_chatbot.tool.tojson import load_to_jsonlist
@@ -182,7 +182,7 @@ elif st.session_state['authentication_status']:
             messages = history_messages + [{"role": "user", "content": prompt}]
 
             # 调用 API 获取响应，使用用户选择的 type 和 model
-            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, apikey_config=st.session_state.apikey_config) 
+            response = stream_api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, apikey_config=st.session_state.apikey_config) 
 
             # 处理流式响应
             assistant_response_parts = []
@@ -299,7 +299,7 @@ elif st.session_state['authentication_status']:
                             messages = [{"role": "system", "content": st.session_state.sys_instruction_prompt}]
                             messages.append({"role": "user", "content": prompt})
                             # 调用 API 获取响应，使用用户选择的 type 和 model
-                            response = api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, apikey_config=st.session_state.apikey_config) 
+                            response = stream_api_chat(type=selected_type, model=selected_model, temperature=temperature, messages=messages, stream=True, apikey_config=st.session_state.apikey_config) 
                     
                             # 处理流式响应
                             assistant_response_parts = []
