@@ -1,5 +1,9 @@
 {
-    "user_name": {
-        "api_key_name": "api_key_value"
+    "xingmo": {
+        "ZHIPU_APIKEY": "b78da637fd4f6d3bf452546479528f7d.I5EmTyRnqLt1Au35",
+        "QIANFAN_AK": "vBkdItnNdVaI5gOb2cZQ4GpG",
+        "QIANFAN_SK": "ySkoEdmvEaX1HxZyiEarTz8VkFugdamC",
+        "ARK_APIKEY": "ae657279-7710-422e-a617-0af686a4c9c3",
+        "doubao.Doubao-pro-32k": "ep-20240919114431-42m99"
     }
 }
