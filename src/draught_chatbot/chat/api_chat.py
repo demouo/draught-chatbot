@@ -41,7 +41,7 @@ class ClientFactory:
                 os.environ["QIANFAN_AK"] = apikey_config.get(f"QIANFAN_AK", "")
                 os.environ["QIANFAN_SK"] = apikey_config.get(f"QIANFAN_SK", "")
                 client = qianfan.ChatCompletion()
-            elif type == 'aliyun':
+            elif type == 'draught':
                 openai_api_base = "http://10.10.105.149:8000/v1"
                 client = OpenAI(
                     api_key="EMPTY",
@@ -52,7 +52,7 @@ class ClientFactory:
 
 def api_chat(type, model, temperature, messages, apikey_config):
     client = ClientFactory.get_client(type, apikey_config)
-    if type in ["zhipu", "aliyun"]:
+    if type in ["zhipu", "draught"]:
         resp = client.chat.completions.create(model=model,temperature=temperature,messages=messages)
         return resp.choices[0].message.content
     elif type == "doubao":
