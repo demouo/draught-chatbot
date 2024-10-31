@@ -78,7 +78,7 @@ def api_chat(type, model, temperature, messages, apikey_config):
 def stream_api_chat(type, model, temperature, messages, stream, apikey_config):
     client = ClientFactory.get_client(type, apikey_config)
     
-    if type in ["zhipu", "aliyun"]:
+    if type in ["zhipu", "draught"]:
         resp = client.chat.completions.create(model=model,temperature=temperature,messages=messages,stream=stream)
         if stream:
             for chunk in resp:
